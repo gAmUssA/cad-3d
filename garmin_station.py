@@ -257,6 +257,11 @@ def station() -> cq.Workplane:
     return result
 
 
+if "show_object" in globals():
+    # CQ-editor live preview: open this file in cq-editor, hit Render (F5),
+    # tweak a parameter, re-render
+    show_object(station(), name="garmin_station")  # noqa: F821
+
 if __name__ == "__main__":
     out = Path(__file__).parent / "out"
     out.mkdir(exist_ok=True)
