@@ -11,3 +11,6 @@ wheels/
 
 # generated CAD exports (reproducible via main.py)
 out/
+
+# downloaded reference models — license forbids redistribution, NEVER commit
+reference/
