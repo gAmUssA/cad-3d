@@ -30,6 +30,14 @@ CLEAR = 0.8          # per-side pocket clearance (bump to 1.2 for a cased Edge)
 WALL = 4.0
 BASE_T = 8.0
 FILLET = 5.0
+
+# design language: one radius family + softened top edges everywhere, so the
+# towers read as one product instead of boolean'd boxes
+R_BASE = 14.0        # base plinth corner radius
+R_TOWER = 8.0        # tower vertical-corner radius
+SOFT = 2.0           # top-edge (crown) fillet on every tower
+CHAMFER = 1.5        # base top-perimeter chamfer
+LABEL = "GARMIN"     # engraved on the Edge channel lip ("" to disable)
 EDGE_LEAN = 15.0     # Edge dashboard lean, degrees from vertical
 EDGE_LIP = 14.0      # front lip holding the Edge's bottom edge
 VARIA_DEPTH = 50.0   # Varia sink depth (original used ~45-50)
@@ -64,12 +72,22 @@ base_d = varia_block_d + 10.0 + (ep_t + 2 * WALL) + 4.0
 base_front = None  # computed below
 
 
+def soften(part: cq.Workplane, r: float = SOFT) -> cq.Workplane:
+    """Fillet a part's top edges; skip silently if OCC can't (tiny edges)."""
+    try:
+        return part.faces(">Z").edges().fillet(r)
+    except Exception:
+        return part
+
+
 def station() -> cq.Workplane:
     base = (
         cq.Workplane("XY")
         .box(base_l, base_d, BASE_T, centered=(True, True, False))
         .edges("|Z")
-        .fillet(FILLET)
+        .fillet(R_BASE)
+        .faces(">Z")
+        .chamfer(CHAMFER)
     )
     result = base
 
@@ -101,16 +119,23 @@ def station() -> cq.Workplane:
     backrest = (
         cq.Workplane("XY")
         .box(edge_slot_l + 2 * WALL, WALL + 1, edge_back_h + 6, centered=(True, True, False))
+        .edges("|Y and >Z")
+        .fillet(R_TOWER)                          # rounded top corners
+        .faces(">Z")
+        .edges()
+        .fillet(1.8)
         .rotate((0, 0, 0), (1, 0, 0), -EDGE_LEAN)
         .translate((edge_ch_cx, groove_cy + ep_t / 2 + (WALL + 1) / 2, BASE_T))
     )
-    lip = (
+    lip = soften(
         cq.Workplane("XY")
         .center(edge_ch_cx, groove_cy - ep_t / 2 - WALL / 2)
         .box(edge_slot_l + 2 * WALL, WALL, EDGE_LIP, centered=(True, True, False))
-        .translate((0, 0, BASE_T))
+        .translate((0, 0, BASE_T)),
+        1.5,
     )
     result = result.union(backrest).union(lip)
+
 
     # end stops so the Edge can't slide sideways out of the channel
     for sx in (-1, 1):
@@ -131,13 +156,13 @@ def station() -> cq.Workplane:
     result = result.cut(cable)
 
     # --- Varia RCT715 holster (front left) --------------------------------------
-    holster = (
+    holster = soften(
         cq.Workplane("XY")
         .center(varia_cx, varia_cy)
         .box(varia_block_w, varia_block_d, varia_block_h, centered=(True, True, False))
         .translate((0, 0, BASE_T))
         .edges("|Z")
-        .fillet(FILLET)
+        .fillet(R_TOWER)
     )
     result = result.union(holster)
 
@@ -169,15 +194,24 @@ def station() -> cq.Workplane:
     result = result.cut(drop)
 
     # --- HRM 600 display shelf (front center) -----------------------------------
-    pedestal = (
+    pedestal = soften(
         cq.Workplane("XY")
         .center(shelf_cx, shelf_cy)
         .box(shelf_w, shelf_d, shelf_h, centered=(True, True, False))
         .translate((0, 0, BASE_T))
         .edges("|Z")
-        .fillet(3.0)
+        .fillet(6.0)
     )
     result = result.union(pedestal)
+
+    # engraved label on the pedestal's front face, under the displayed pod —
+    # the same billboard spot the original uses
+    if LABEL:
+        txt = (
+            cq.Workplane("XZ", origin=(shelf_cx, shelf_cy - shelf_d / 2, BASE_T + shelf_h / 2 - 1))
+            .text(LABEL, 8, -1.2, font="Helvetica", kind="bold")
+        )
+        result = result.cut(txt)
 
     # angled tray on top: pod lies long-axis horizontal, leaning back
     tray_pocket = (
@@ -189,15 +223,17 @@ def station() -> cq.Workplane:
     result = result.cut(tray_pocket)
 
     # --- strap arch (front right) ------------------------------------------------
+    # Stadium-profile arch: outer corners at half the loop width so the top
+    # reads as a continuous curve (handle look), inner follows concentrically.
     # XZ workplane extrudes toward -Y: outer spans y in [-arch_d, 0], so shift
-    # by arch_cy + arch_d/2 to center the loop at arch_cy
-    arch_outer = (
+    # by arch_cy + arch_d/2 to center the loop at arch_cy.
+    arch = (
         cq.Workplane("XZ")
         .center(arch_cx, (BASE_T + arch_h) / 2 + 1)
         .rect(arch_w, arch_h + 2)
         .extrude(arch_d)
         .edges("|Y")
-        .fillet(8.0)
+        .fillet(arch_w / 2 - 0.1)
         .translate((0, arch_cy + arch_d / 2, 0))
     )
     # inner cut limited to the arch's own depth — a through-everything extrude
@@ -208,10 +244,15 @@ def station() -> cq.Workplane:
         .rect(arch_w - 2 * arch_bar, arch_h - 2 * arch_bar)
         .extrude(arch_d + 4)
         .edges("|Y")
-        .fillet(5.0)
+        .fillet((arch_w - 2 * arch_bar) / 2 - 0.1)
         .translate((0, arch_cy + arch_d / 2 + 2, 0))
     )
-    result = result.union(arch_outer).cut(arch_inner)
+    arch = arch.cut(arch_inner)
+    try:
+        arch = arch.edges().fillet(1.2)          # soften the loop's rims
+    except Exception:
+        pass
+    result = result.union(arch)
 
     return result
 
