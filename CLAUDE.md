@@ -130,8 +130,16 @@ band holster (strap stuffs in, pod stands behind the notch ~flush,
     helper, so fit is identical. 55mm (≈+1cm over the 45mm that fit perfectly).
   - **Dock vs coupon claw shape differs (fit identical):** in the dock the
     front runs ~14mm to the deck face, so the claws are deep corner POSTS, not
-    thin lips; and the Edge towers ~70mm above a ~48mm grip (cantilever — watch
-    for forward lean; raise cradle walls above the deck if it tips).
+    thin lips.
+  - **Raised cradle collar** (`EDGE_RISE`): a collar unioned around the Edge
+    from `DECK_F` up to `edge_rim` lifts the grip above the deck (cantilever
+    ~70→~45mm). Collar = `rect(ew_x+2*WALL_SIDE, ew_y+2*WALL_SIDE)` so its outer
+    wall is FLUSH with the block (else a ~1mm sliver). `edge_rim` is CAPPED at
+    `DECK_B+NOTCH_ABOVE-1` (just under the HRM notch) — rising past the notch
+    rams it and leaves jagged thin slivers (print-5 artifact, now fixed). More
+    grip would need a narrower `NOTCH_W` or the Edge moved right.
+  - Verify after edits: `vtkFeatureEdges` boundary+nonmanifold == 0 (watertight)
+    and OBBTree wall-thickness probe ~5-6mm (no thin fins).
   - `EDGE_EDGE_R=3.5` still a GUESS — caliper the real side-edge radius.
   The full dock AND the `edge_fit_test()` coupon both call it, so the coupon's
   fit is byte-identical — print the small coupon (`garmin_station_v4_edgetest

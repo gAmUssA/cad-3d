@@ -74,6 +74,13 @@ NOTCH_ABOVE = 12.0   # notch bottom sits this far above the slot floor
 
 WELL_FLOOR = 5.0     # Varia well floor (drives total sink ~41 at the rim)
 EDGE_FLOOR = 8.0     # Edge tower well floor (sink ~38 at the front rim)
+EDGE_RISE = 11.0     # Edge cradle rises this far above the deck shelf for a
+                     # taller grip (less tower cantilever). CAPPED just under
+                     # the HRM notch (DECK_B+NOTCH_ABOVE): rising past it makes
+                     # the cradle ram the notch → jagged slivers. The rear relief
+                     # still continues up the raised wall so the quarter-turn
+                     # mount boss nests in it. (More grip needs a narrower notch
+                     # or the Edge moved right — both change the layout.)
 UT_FLOOR = 5.0       # UT800 well floor
 EDGE_MOUNT_W = 30.0  # relief groove for the Edge's rear quarter-turn mount
 EDGE_MOUNT_D = 6.0   # groove depth into the well's back wall
@@ -402,7 +409,21 @@ def station() -> cq.Workplane:
     result = result.cut(ut_relief)
 
     # --- Edge 1050 claw cradle (right): cup + back datum/relief + open front -----
-    result = cut_edge_claw(result, edge_cx, edge_cy, EDGE_FLOOR, H, y_front)
+    # raised collar so the cradle grips ABOVE the deck (taller tower support);
+    # cut_edge_claw then carves the cup/window/relief up through it, so the rear
+    # mount-boss relief continues up the raised back wall (mount nests in it)
+    # cap the rim just under the notch so the cradle never rams it
+    edge_rim = min(DECK_B + EDGE_RISE, DECK_B + NOTCH_ABOVE - 1.0)
+    # collar spans the full Edge envelope + side walls so its outer wall is
+    # FLUSH with the block edge (no sliver); ~5.8mm walls all round
+    collar = (
+        cq.Workplane("XY").center(edge_cx, edge_cy)
+        .rect(ew_x + 2 * WALL_SIDE, ew_y + 2 * WALL_SIDE).extrude(edge_rim - DECK_F)
+        .edges("|Z").fillet(R_CORNER)
+        .translate((0, 0, DECK_F))
+    )
+    result = result.union(collar)
+    result = cut_edge_claw(result, edge_cx, edge_cy, EDGE_FLOOR, edge_rim, y_front)
 
     # soften rims/wall tops, relieve the bottom edge
     result = soften(result)
