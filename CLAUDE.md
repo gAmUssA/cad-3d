@@ -169,6 +169,10 @@ asymmetric since the devices differ in width):**
   `R_EDGE_WELL=7` too. If it still binds, widen/deepen the groove first.
 - Varia↔holster wall was 1.6 mm (thin) → `GAP_SLOT=5.0`. Varia clearance left
   at 0.8 (user said snug is fine).
+- HRM band slot floor deepened via `BAND_DEEPEN=8` (floor `DECK_B-BAND_DEEPEN`,
+  depth 30→38) so the pod+strap tuck ~6mm below the rim. Notch left at its
+  height (lowering it would shrink the Edge cradle cap) — so it reveals a touch
+  less of the now-deeper pod; tune `BAND_DEEPEN` to taste.
 - HRM notch/pod/logo now all on x=0 = gap center (was at part-center, ~9 mm
   off the gap toward the Edge). `logo_cx=0`; gap (±half_gap) is wider than the
   glyph run so no overhang. Band slot centered on `x_mid`, notch on 0.

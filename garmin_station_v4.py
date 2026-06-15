@@ -52,6 +52,8 @@ UT_CLEAR_W = 0.4     # UT800 width (x) — was 0.8/side, ran loose; snug it up
 DECK_F = 46.0        # deck height at the front face
 DECK_DROP = 10.0     # deck rises this much front -> back (the ramp)
 SLOT_DEPTH = 30.0    # band slot depth below the rim (pod 31.6 ~ flush)
+BAND_DEEPEN = 8.0    # lower the band slot FLOOR this much below the deck so the
+                     # HRM pod + strap tuck down deeper (floor = DECK_B - this)
 BAND_W = 20.0        # band slot width — fabric strap + pod stuff in loosely
 FLAT_FRONT = 14.0    # flat deck strip before the ramp
 SHELF_BACK = 7.0     # flat shelf between ramp top and slot wall
@@ -122,6 +124,7 @@ LOGO_SIZE = 8.0
 # --- derived ------------------------------------------------------------------
 DECK_B = DECK_F + DECK_DROP          # deck at the slot wall = slot floor
 H = DECK_B + SLOT_DEPTH              # rim height
+band_floor = DECK_B - BAND_DEEPEN    # HRM band slot floor (deepened below deck)
 
 # front-aligned wells: extra VARIA_BACK depth lands behind the device (the
 # well front stays at WALL_FRONT), so the GAP_SLOT wall to the holster is
@@ -344,10 +347,10 @@ def station() -> cq.Workplane:
         cq.Workplane("XY")
         .center(x_mid, slot_cy)
         .rect(base_l - 2 * SLOT_END, BAND_W)
-        .extrude(H - DECK_B + 5)
+        .extrude(H - band_floor + 5)
         .edges("|Z")
         .fillet(3.0)
-        .translate((0, 0, DECK_B))
+        .translate((0, 0, band_floor))
     )
     result = result.cut(slot)
 
@@ -472,7 +475,7 @@ def device_mockups() -> dict[str, cq.Workplane]:
         .box(HRM_W, HRM_T, HRM_H, centered=(True, True, False))
         .edges("|Y")
         .fillet(4.0)
-        .translate((0, slot_cy, DECK_B + 0.5))
+        .translate((0, slot_cy, band_floor + 0.5))
     )
     return {"edge": edge, "varia": varia, "ut": ut, "pod": pod}
 
