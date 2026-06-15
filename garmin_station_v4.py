@@ -1,0 +1,517 @@
+"""Garmin Station V4 — band-holster, 4-device dock (V3 monolith language).
+
+Same billet-block language as garmin_station.py (V3). Front row, left to
+right: the two Varia lights grouped, then the centered HRM window, then the
+Edge tower:
+
+  - Varia UT800 (front headlight): deep well far left, stands vertical
+  - Varia RCT715 (rear radar/taillight): deep well, stands vertical
+  - center gap: GARMIN inlay on the ramp + the HRM U-notch, all on x=0
+  - Edge 1050: PORTRAIT tower well on the right (display perch — towering
+    buries its bottom USB-C, so not a charging dock)
+  - back full-width slot = HRM 600 BAND holster: strap stuffs along the
+    channel, pod (31.6 tall) stands behind the notch ~flush with the rim
+
+Both bike lights + the Edge + the HRM strap all dock at once (~203 mm wide).
+
+Device dimensions (verified against Garmin spec sheets / reviews):
+
+  Garmin Edge 1050   60.2 x 118.5 x 16.3 mm   161 g
+  Varia RCT715      106.5 x  42.0 x  31.9 mm   147 g
+  Varia UT800        96.6 x  33.5 x  29.7 mm   (44.7 deep incl. mount flange)
+  HRM 600 module     68.0 x  31.6 x  10.0 mm
+
+Exports (out/):
+  garmin_station_v4_body.stl / _logo.stl   two-color pair for Bambu Studio
+  garmin_station_v4.stl / .step            merged fallback + CAD interchange
+
+All dimensions are parameters — owning the model beats remixing one.
+"""
+
+import math
+from pathlib import Path
+
+import cadquery as cq
+
+# --- devices (mm) -------------------------------------------------------------
+EDGE_W, EDGE_H, EDGE_T = 60.2, 118.5, 16.3     # Edge 1050 (portrait tower)
+VARIA_W, VARIA_H, VARIA_T = 42.0, 106.5, 31.9  # RCT715, stands vertical
+UT_W, UT_H, UT_T = 33.5, 96.6, 29.7            # Varia UT800, stands vertical
+UT_FLANGE = 44.7                               # depth incl. mount flange (tab)
+HRM_W, HRM_H, HRM_T = 68.0, 31.6, 10.0         # HRM 600 module, in band slot
+
+CLEAR = 0.8          # general per-side pocket clearance
+# Per-axis clearances dialed in from test prints (print 2 = "almost perfect"):
+# 3.0/2.5 (width/depth) + the lead-in = too loose (print 3 swam). With the
+# lead-in funnel easing insertion, the seated fit goes back to SNUG: ~print-2
+# values, just a hair more width. The funnel eases entry, the walls grip.
+EDGE_CLEAR_W = 1.2   # Edge width (x) per side
+EDGE_CLEAR = 1.0     # Edge depth/thickness (y) per side
+VARIA_BACK = 3.0     # extra depth behind the RCT715 (back was tight)
+UT_CLEAR_W = 0.4     # UT800 width (x) — was 0.8/side, ran loose; snug it up
+
+# --- station ------------------------------------------------------------------
+DECK_F = 46.0        # deck height at the front face
+DECK_DROP = 10.0     # deck rises this much front -> back (the ramp)
+SLOT_DEPTH = 30.0    # band slot depth below the rim (pod 31.6 ~ flush)
+BAND_W = 20.0        # band slot width — fabric strap + pod stuff in loosely
+FLAT_FRONT = 14.0    # flat deck strip before the ramp
+SHELF_BACK = 7.0     # flat shelf between ramp top and slot wall
+
+WALL_FRONT = 4.5     # deck front wall (front face -> Varia well)
+WALL_SIDE = 5.0      # outer side walls flanking the wells
+SLOT_WALL_F = 3.5    # band slot front (display) wall
+SLOT_WALL_R = 3.0    # band slot rear wall
+SLOT_END = 4.0       # slot end walls
+CENTER_GAP = 46.0    # deck between RCT715 and Edge — the logo/notch band
+GAP_WELL = 6.0       # gap between the two Varia light wells (UT800 | RCT715)
+GAP_SLOT = 5.0       # y gap (wall) between wells and the slot — was 1.6, too
+                     # thin between the Varia back and the HRM holster
+
+NOTCH_W = 70.0       # U-notch in the display wall (pod reveal + thumb)
+NOTCH_R = 15.0
+NOTCH_ABOVE = 12.0   # notch bottom sits this far above the slot floor
+
+WELL_FLOOR = 5.0     # Varia well floor (drives total sink ~41 at the rim)
+EDGE_FLOOR = 8.0     # Edge tower well floor (sink ~38 at the front rim)
+UT_FLOOR = 5.0       # UT800 well floor
+EDGE_MOUNT_W = 30.0  # relief groove for the Edge's rear quarter-turn mount
+EDGE_MOUNT_D = 6.0   # groove depth into the well's back wall
+LEADIN = 4.0         # curved bellmouth lead-in at the Edge niche mouth (learned
+                     # from the 1040 quarter-turn holder, whose rail tops sweep
+                     # in over ~10mm): the opening flares by this per side at the
+                     # rim on a concave radius, blending to nominal LEADIN below.
+                     # Affects only entry, not the seated fit. Stronger self-guide
+                     # + softer touch than a flat chamfer.
+# UT800's quarter-turn mount flange (29.7 body -> 44.7) is ASSUMED to face
+# FORWARD: a notch through the well's front wall homes the tab + serves as
+# the extraction grip. The front is open, so this can't break the holster or
+# add width. If the tab is actually on a side/back, move this relief.
+UT_RELIEF_W = 20.0   # front flange-relief notch width
+UT_RELIEF_H = 50.0   # notch height up from the floor
+SCOOP_R = 12.0       # thumb scoop on the Varia well front rim
+SCOOP_DIP = 8.0
+
+# Claw-style Edge holder (alt to the friction well, learned from the Skådis
+# Garmin holder): a C-channel that CUPS the device's rounded side edges with
+# two front claws over a flat back datum — registers + clips, not 4-wall
+# friction. Screen open in front; slide the Edge in from the top.
+EDGE_EDGE_R = 3.5    # Edge 1050 rounded side-edge radius — CALIPER THIS
+EDGE_CLAW_CL = 0.4   # cup clearance (snug; it wraps the contour, not friction)
+CLAW_W = 7.0         # front claw span/side (covers the corner + ~3mm onto front)
+
+# design language (from the reference): one block, small radii, soft tops
+R_CORNER = 5.0       # outer vertical corners
+R_FRONT = 3.0        # front top edge
+R_WELL = 6.0         # Varia well corners
+R_EDGE_WELL = 8.5    # Edge well corners — matched to the device's rounded
+                     # corners so they nest and it seats fully (was 7: corners
+                     # rode up). Near max for the 18.3 slot (8.5+8.5 < 18.3).
+SOFT = 1.0           # rim/top-edge fillet
+CHAMFER = 1.0        # bottom perimeter (elephant-foot relief)
+LABEL = "GARMIN"     # inlaid on the deck ramp ("" to disable)
+LOGO_DEPTH = 1.0     # inlay depth — printed as a separate body for color swap
+LOGO_SIZE = 8.0
+
+# --- derived ------------------------------------------------------------------
+DECK_B = DECK_F + DECK_DROP          # deck at the slot wall = slot floor
+H = DECK_B + SLOT_DEPTH              # rim height
+
+# front-aligned wells: extra VARIA_BACK depth lands behind the device (the
+# well front stays at WALL_FRONT), so the GAP_SLOT wall to the holster is
+# unchanged — the whole block just gets a few mm deeper
+vw_x, vw_y = VARIA_W + 2 * CLEAR, VARIA_T + 2 * CLEAR + VARIA_BACK
+ut_x, ut_y = UT_W + 2 * UT_CLEAR_W, UT_T + 2 * CLEAR
+ew_x, ew_y = EDGE_W + 2 * EDGE_CLEAR_W, EDGE_T + 2 * EDGE_CLEAR
+
+deck_zone = WALL_FRONT + max(vw_y, ut_y) + GAP_SLOT  # y depth of the deck
+base_d = deck_zone + SLOT_WALL_F + BAND_W + SLOT_WALL_R
+
+# CENTER_GAP (between RCT715 and Edge) is centered on x=0, so the HRM notch,
+# the pod, and the GARMIN logo all sit on the part centerline. The UT800 +
+# RCT715 lights are grouped to the left of the gap, the Edge to the right.
+# Devices differ in width, so the outer walls — and the block outline — are
+# intentionally asymmetric; a centered HRM window beats a symmetric outline.
+half_gap = CENTER_GAP / 2
+edge_cx = half_gap + ew_x / 2                        # Edge, right of the gap
+varia_cx = -(half_gap + vw_x / 2)                    # RCT715, left of the gap
+ut_cx = varia_cx - vw_x / 2 - GAP_WELL - ut_x / 2    # UT800, far left
+x_left = ut_cx - ut_x / 2 - WALL_SIDE
+x_right = edge_cx + ew_x / 2 + WALL_SIDE
+base_l = x_right - x_left
+x_mid = (x_left + x_right) / 2                        # block centroid (≠ 0)
+
+y_front = -base_d / 2
+y_wall = y_front + deck_zone                          # slot display wall front
+slot_cy = y_wall + SLOT_WALL_F + BAND_W / 2
+
+# lights front-aligned (fronts at WALL_FRONT); Edge centered in the deck
+varia_cy = y_front + WALL_FRONT + vw_y / 2
+ut_cy = y_front + WALL_FRONT + ut_y / 2
+edge_cy = y_front + deck_zone / 2
+
+ramp_run = deck_zone - FLAT_FRONT - SHELF_BACK
+ramp_a = math.degrees(math.atan2(DECK_DROP, ramp_run))  # ~28 deg
+
+# logo on the centerline (x=0) = gap center = notch center; gap (±half_gap)
+# is wider than the glyph run, so no overhang onto the well cuts
+logo_cx = 0.0
+logo_cy = y_front + FLAT_FRONT + 0.42 * ramp_run
+logo_cz = DECK_F + (logo_cy - (y_front + FLAT_FRONT)) * DECK_DROP / ramp_run
+
+
+def soften(part: cq.Workplane, r: float = SOFT) -> cq.Workplane:
+    """Fillet a part's top edges; skip silently if OCC can't (tiny edges)."""
+    try:
+        return part.faces(">Z").edges().fillet(r)
+    except Exception:
+        return part
+
+
+def logo() -> cq.Workplane | None:
+    """GARMIN wordmark + delta triangle, flush 1 mm inlay on the deck ramp.
+
+    Built flat on XY (extruded down), then tilted to the ramp angle and
+    translated so the glyph top faces lie in the ramp surface. The solid
+    also cuts its own pocket in the body — body + logo print together as
+    one multi-color object (zero clearance, sliced together).
+    """
+    if not LABEL:
+        return None
+    txt = cq.Workplane("XY").text(LABEL, LOGO_SIZE, -LOGO_DEPTH, font="Helvetica", kind="bold")
+    bb = txt.val().BoundingBox()
+    # delta triangle sitting above the last letter
+    tri_cx = bb.xmax - 2.6
+    tri_base = bb.ymax + 1.6
+    tri = (
+        cq.Workplane("XY")
+        .polyline([(tri_cx - 2.6, tri_base), (tri_cx + 2.6, tri_base), (tri_cx, tri_base + 4.0)])
+        .close()
+        .extrude(-LOGO_DEPTH)
+    )
+    return (
+        txt.union(tri)
+        # Rx(+ramp_a): +Y leans up the ramp, -Z extrusion points into the deck
+        .rotate((0, 0, 0), (1, 0, 0), ramp_a)
+        .translate((logo_cx, logo_cy, logo_cz))
+    )
+
+
+def cut_edge_well(body: cq.Workplane, cx: float, cy: float,
+                  floor_z: float, rim_z: float) -> cq.Workplane:
+    """Edge 1050 portrait niche: well + rear mount-boss relief groove + a
+    mouth lead-in chamfer. Shared by the full dock and the fit-test coupon so
+    the fit is byte-identical — tune the coupon, the dock inherits it."""
+    depth = rim_z - floor_z
+    well = (
+        cq.Workplane("XY").center(cx, cy)
+        .rect(ew_x, ew_y).extrude(depth + 5)
+        .edges("|Z").fillet(R_EDGE_WELL)
+        .translate((0, 0, floor_z))
+    )
+    body = body.cut(well)
+
+    # rear quarter-turn mount-boss relief groove (stops short of the holster)
+    back_y = cy + ew_y / 2
+    groove = (
+        cq.Workplane("XY").center(cx, back_y + EDGE_MOUNT_D / 2 - 0.5)
+        .rect(EDGE_MOUNT_W, EDGE_MOUNT_D + 1.0).extrude(depth)
+        .edges("|Z").fillet(2.0)   # < EDGE_MOUNT_D/2 or opposing fillets collide
+        .translate((0, 0, floor_z))
+    )
+    body = body.cut(groove)
+
+    # curved bellmouth lead-in at the mouth: a box flared by LEADIN/side, its
+    # bottom FILLETED back to nominal (concave sweep, not a flat 45°), cut from
+    # the rim down — strong self-guide, soft touch (1040-holder style)
+    funnel = (
+        cq.Workplane("XY").center(cx, cy)
+        .rect(ew_x + 2 * LEADIN, ew_y + 2 * LEADIN).extrude(LEADIN + 2)
+        .edges("<Z").fillet(LEADIN * 0.99)
+        .translate((0, 0, rim_z - LEADIN))
+    )
+    body = body.cut(funnel)
+    return body
+
+
+def station() -> cq.Workplane:
+    """Monolith body: profile extruded along X, slot + wells cut in."""
+    y_back = base_d / 2
+    # YZ cross-section: front face, flat strip, ramp, shelf, full-height back
+    profile = [
+        (y_front, 0),
+        (y_front, DECK_F),
+        (y_front + FLAT_FRONT, DECK_F),
+        (y_front + FLAT_FRONT + ramp_run, DECK_B),
+        (y_wall, DECK_B),
+        (y_wall, H),
+        (y_back, H),
+        (y_back, 0),
+    ]
+    result = (
+        cq.Workplane("YZ")
+        .polyline(profile)
+        .close()
+        .extrude(base_l)
+        .translate((x_left, 0, 0))
+        .edges("|Z")
+        .fillet(R_CORNER)
+    )
+    # front top edge + ramp creases, before any cuts land on them
+    result = result.faces("<Y").edges(">Z").fillet(R_FRONT)
+    try:
+        result = result.edges(
+            cq.selectors.NearestToPointSelector((0, y_front + FLAT_FRONT, DECK_F))
+        ).fillet(2.0)
+    except Exception:
+        pass
+
+    # --- HRM band slot across the back -------------------------------------------
+    # full-width holster spans the (asymmetric) block, centered on x_mid; the
+    # pod itself sits at the centered notch (x=0)
+    slot = (
+        cq.Workplane("XY")
+        .center(x_mid, slot_cy)
+        .rect(base_l - 2 * SLOT_END, BAND_W)
+        .extrude(H - DECK_B + 5)
+        .edges("|Z")
+        .fillet(3.0)
+        .translate((0, 0, DECK_B))
+    )
+    result = result.cut(slot)
+
+    # U-notch through the display wall only — extrude is depth-limited so it
+    # can't punch the rear wall (through-cut gotcha)
+    notch_z0 = DECK_B + NOTCH_ABOVE
+    notch = (
+        cq.Workplane("XZ", origin=(0, y_wall - 2, 0))
+        .center(0, (notch_z0 + H + 10) / 2)
+        .rect(NOTCH_W, H + 10 - notch_z0)
+        .extrude(-(SLOT_WALL_F + 8))
+        .edges("|Y and <Z")
+        .fillet(NOTCH_R)
+    )
+    result = result.cut(notch)
+
+    # --- Varia RCT715 well (front left) -----------------------------------------
+    varia_well = (
+        cq.Workplane("XY")
+        .center(varia_cx, varia_cy)
+        .rect(vw_x, vw_y)
+        .extrude(H)
+        .edges("|Z")
+        .fillet(R_WELL)
+        .translate((0, 0, WELL_FLOOR))
+    )
+    result = result.cut(varia_well)
+
+    # thumb scoop dipping the well's front rim (echoes the big notch)
+    scoop = (
+        cq.Workplane("XZ", origin=(varia_cx, y_front - 2, 0))
+        .center(0, DECK_F + SCOOP_R - SCOOP_DIP)
+        .circle(SCOOP_R)
+        .extrude(-(WALL_FRONT + SCOOP_R))
+    )
+    result = result.cut(scoop)
+
+    # --- Varia UT800 well (front, far left) -------------------------------------
+    ut_well = (
+        cq.Workplane("XY")
+        .center(ut_cx, ut_cy)
+        .rect(ut_x, ut_y)
+        .extrude(H)
+        .edges("|Z")
+        .fillet(R_WELL)
+        .translate((0, 0, UT_FLOOR))
+    )
+    result = result.cut(ut_well)
+
+    # front flange-relief notch: homes the forward-facing mount tab and gives
+    # a finger grip; cuts from the front face into the well's front
+    ut_front = ut_cy - ut_y / 2
+    ut_relief = (
+        cq.Workplane("XY")
+        .center(ut_cx, (y_front + ut_front) / 2)
+        .rect(UT_RELIEF_W, (ut_front + 3.0) - (y_front - 3.0))
+        .extrude(UT_RELIEF_H)
+        .edges("|Z")
+        .fillet(5.0)
+        .translate((0, 0, UT_FLOOR))
+    )
+    result = result.cut(ut_relief)
+
+    # --- Edge 1050 tower well (right): well + mount groove + lead-in --------------
+    result = cut_edge_well(result, edge_cx, edge_cy, EDGE_FLOOR, H)
+
+    # soften rims/wall tops, relieve the bottom edge
+    result = soften(result)
+    try:
+        result = result.edges("<Z").chamfer(CHAMFER)
+    except Exception:
+        pass
+
+    # logo pocket — the logo solid cuts its own seat (flush inlay)
+    lg = logo()
+    if lg is not None:
+        result = result.cut(lg)
+
+    return result
+
+
+def device_mockups() -> dict[str, cq.Workplane]:
+    """Simplified device stand-ins, positioned in their resting spots.
+    For visualization renders only — never exported for printing."""
+    edge = (
+        cq.Workplane("XY")
+        .box(EDGE_W, EDGE_T, EDGE_H, centered=(True, True, False))
+        .edges("|Z")
+        .fillet(8.0)
+        .translate((edge_cx, edge_cy, EDGE_FLOOR + 0.5))
+    )
+    varia = (
+        cq.Workplane("XY")
+        .box(VARIA_W, VARIA_T, VARIA_H, centered=(True, True, False))
+        .edges("|Z")
+        .fillet(10.0)
+        .translate((varia_cx, varia_cy, WELL_FLOOR + 0.5))
+    )
+    ut = (
+        cq.Workplane("XY")
+        .box(UT_W, UT_T, UT_H, centered=(True, True, False))
+        .edges("|Z")
+        .fillet(9.0)
+        .translate((ut_cx, ut_cy, UT_FLOOR + 0.5))
+    )
+    pod = (
+        cq.Workplane("XY")
+        .box(HRM_W, HRM_T, HRM_H, centered=(True, True, False))
+        .edges("|Y")
+        .fillet(4.0)
+        .translate((0, slot_cy, DECK_B + 0.5))
+    )
+    return {"edge": edge, "varia": varia, "ut": ut, "pod": pod}
+
+
+def edge_fit_test() -> cq.Workplane:
+    """Small standalone coupon: just the Edge 1050 niche in a minimal block,
+    shorter than the full tower, for a fast print to dial in the fit + lead-in
+    before committing the big dock. Uses cut_edge_well() so the cross-section,
+    clearances, mount groove, and lead-in are identical to the real well."""
+    TEST_H = 45.0        # well only this deep — enough to feel the slide-in
+    FLOOR = 4.0
+    depth = ew_y + WALL_FRONT + EDGE_MOUNT_D + 4.0   # front wall + back wall
+    cy_block = (EDGE_MOUNT_D + 4.0 - WALL_FRONT) / 2  # so the well sits at y=0
+    block = (
+        cq.Workplane("XY")
+        .box(ew_x + 2 * WALL_SIDE, depth, TEST_H, centered=(True, True, False))
+        .translate((0, cy_block, 0))
+        .edges("|Z").fillet(R_CORNER)
+    )
+    try:
+        block = block.edges("<Z").chamfer(CHAMFER)
+    except Exception:
+        pass
+    return cut_edge_well(block, 0.0, 0.0, FLOOR, TEST_H)
+
+
+def edge_claw_test() -> cq.Workplane:
+    """Claw-style Edge holder coupon (learned from the Skådis Garmin holder):
+    a C-channel that cups the device's rounded side edges with two front claws
+    over a flat back datum, screen open in front. Registers + clips instead of
+    4-wall friction; slide the Edge in from the top. Print alongside
+    edge_fit_test() to compare the two grip styles."""
+    cl = EDGE_CLAW_CL
+    W = EDGE_W + 2 * cl          # cavity width (device width direction)
+    T = EDGE_T + 2 * cl          # cavity depth (device thickness direction)
+    Rc = EDGE_EDGE_R + cl        # cavity corner radius — cups the rounded edge
+    SIDE, BACK, FRONT = 3.0, 3.0, 3.0
+    TEST_H, FLOOR = 45.0, 4.0
+
+    block = (
+        cq.Workplane("XY")
+        .box(W + 2 * SIDE, T + BACK + FRONT, TEST_H, centered=(True, True, False))
+        .edges("|Z").fillet(R_CORNER)
+    )
+    try:
+        block = block.edges("<Z").chamfer(CHAMFER)
+    except Exception:
+        pass
+
+    # device cavity (rounded rect) — back wall is the flat datum, corners cup
+    cav = (
+        cq.Workplane("XY").rect(W, T).extrude(TEST_H)
+        .edges("|Z").fillet(Rc).translate((0, 0, FLOOR))
+    )
+    block = block.cut(cav)
+
+    # front screen window — remove the front wall centre, leaving two corner
+    # claws that overhang the front face (~3mm onto the flat) and retain it
+    open_w = W - 2 * CLAW_W
+    window = (
+        cq.Workplane("XY").center(0, T / 2 + FRONT / 2 + 0.5)
+        .rect(open_w, FRONT + 2.0).extrude(TEST_H)
+        .translate((0, 0, FLOOR))
+    )
+    block = block.cut(window)
+
+    # rear quarter-turn boss relief recessed into the back datum
+    boss = (
+        cq.Workplane("XY").center(0, -(T / 2) - EDGE_MOUNT_D / 2 + 0.5)
+        .rect(EDGE_MOUNT_W, EDGE_MOUNT_D + 1.0).extrude(TEST_H)
+        .edges("|Z").fillet(2.0).translate((0, 0, FLOOR))
+    )
+    block = block.cut(boss)
+
+    # bellmouth lead-in at the channel mouth (slide-in from the top)
+    funnel = (
+        cq.Workplane("XY").rect(W + 2 * LEADIN, T + 2 * LEADIN).extrude(LEADIN + 2)
+        .edges("<Z").fillet(LEADIN * 0.99).translate((0, 0, TEST_H - LEADIN))
+    )
+    block = block.cut(funnel)
+    return block
+
+
+if "show_object" in globals():
+    # CQ-editor live preview: open this file in cq-editor, hit Render (F5)
+    show_object(station(), name="garmin_station_v4")  # noqa: F821
+    lg = logo()
+    if lg is not None:
+        show_object(lg, name="logo", options={"color": "white"})  # noqa: F821
+
+if __name__ == "__main__":
+    import os
+
+    out = Path(__file__).parent / "out"
+    out.mkdir(exist_ok=True)
+
+    body = station()
+    lg = logo()
+    cq.exporters.export(body, str(out / "garmin_station_v4_body.stl"))
+    if lg is not None:
+        cq.exporters.export(lg, str(out / "garmin_station_v4_logo.stl"))
+        merged = body.union(lg)
+    else:
+        merged = body
+    cq.exporters.export(merged, str(out / "garmin_station_v4.stl"))
+    cq.exporters.export(merged, str(out / "garmin_station_v4.step"))
+
+    # standalone Edge fit-test coupon — print this alone first to verify the
+    # slide-in/lead-in, then the full dock inherits the same fit
+    test = edge_fit_test()
+    cq.exporters.export(test, str(out / "garmin_station_v4_edgetest.stl"))
+    tb = test.val().BoundingBox()
+    print(f"edge fit-test coupon (friction well): {tb.xlen:.1f} x {tb.ylen:.1f} x {tb.zlen:.1f} mm")
+
+    claw = edge_claw_test()
+    cq.exporters.export(claw, str(out / "garmin_station_v4_edgeclaw.stl"))
+    cb = claw.val().BoundingBox()
+    print(f"edge claw coupon: {cb.xlen:.1f} x {cb.ylen:.1f} x {cb.zlen:.1f} mm")
+
+    if os.environ.get("MOCKUP"):
+        for name, solid in device_mockups().items():
+            cq.exporters.export(solid, str(out / f"mock_v4_{name}.stl"))
+        print("mockup device STLs exported")
+
+    bb = merged.val().BoundingBox()
+    print(f"exported body/logo/merged STL + STEP to {out}/")
+    print(f"footprint: {bb.xlen:.1f} x {bb.ylen:.1f} mm, height {bb.zlen:.1f} mm")
