@@ -141,6 +141,13 @@ band holster (strap stuffs in, pod stands behind the notch ~flush,
   - Verify after edits: `vtkFeatureEdges` boundary+nonmanifold == 0 (watertight)
     and OBBTree wall-thickness probe ~5-6mm (no thin fins).
   - `EDGE_EDGE_R=3.5` still a GUESS — caliper the real side-edge radius.
+  - **DEPTH fix (print-6):** the 1050 back isn't flat — it domes to a hump +
+    a raised quarter-turn boss; measured body depth before the connector is
+    **18.8mm** (spec 16.3 is just the thin edge). Cavity built on 16.3 was too
+    shallow → the hump scraped the back wall. Now `EDGE_DEPTH=18.8` drives the
+    cavity depth, with decoupled clearance: `EDGE_CLAW_CL=0.4` WIDTH (snug,
+    "fits perfectly") vs `EDGE_CLAW_CL_D=0.7` DEPTH (clears the hump). Boss
+    relief deepened to `EDGE_MOUNT_D=8`. Friction-well coupon export removed.
   The full dock AND the `edge_fit_test()` coupon both call it, so the coupon's
   fit is byte-identical — print the small coupon (`garmin_station_v4_edgetest
   .stl`, ~76×36×45) to dial in the slide-in, then the dock inherits it.

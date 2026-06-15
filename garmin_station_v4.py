@@ -34,19 +34,17 @@ from pathlib import Path
 import cadquery as cq
 
 # --- devices (mm) -------------------------------------------------------------
-EDGE_W, EDGE_H, EDGE_T = 60.2, 118.5, 16.3     # Edge 1050 (portrait tower)
+EDGE_W, EDGE_H, EDGE_T = 60.2, 118.5, 16.3     # Edge 1050 (16.3 = thin edge spec)
+EDGE_DEPTH = 18.8    # MEASURED body depth front->back before the quarter-turn
+                     # connector: the back domes/humps to 18.8 (spec 16.3 is the
+                     # thin edge). This drives the claw cavity depth, NOT 16.3 —
+                     # using 16.3 made the cavity too shallow and the hump scraped.
 VARIA_W, VARIA_H, VARIA_T = 42.0, 106.5, 31.9  # RCT715, stands vertical
 UT_W, UT_H, UT_T = 33.5, 96.6, 29.7            # Varia UT800, stands vertical
 UT_FLANGE = 44.7                               # depth incl. mount flange (tab)
 HRM_W, HRM_H, HRM_T = 68.0, 31.6, 10.0         # HRM 600 module, in band slot
 
 CLEAR = 0.8          # general per-side pocket clearance
-# Per-axis clearances dialed in from test prints (print 2 = "almost perfect"):
-# 3.0/2.5 (width/depth) + the lead-in = too loose (print 3 swam). With the
-# lead-in funnel easing insertion, the seated fit goes back to SNUG: ~print-2
-# values, just a hair more width. The funnel eases entry, the walls grip.
-EDGE_CLEAR_W = 1.2   # Edge width (x) per side
-EDGE_CLEAR = 1.0     # Edge depth/thickness (y) per side
 VARIA_BACK = 3.0     # extra depth behind the RCT715 (back was tight)
 UT_CLEAR_W = 0.4     # UT800 width (x) — was 0.8/side, ran loose; snug it up
 
@@ -82,8 +80,9 @@ EDGE_RISE = 11.0     # Edge cradle rises this far above the deck shelf for a
                      # mount boss nests in it. (More grip needs a narrower notch
                      # or the Edge moved right — both change the layout.)
 UT_FLOOR = 5.0       # UT800 well floor
-EDGE_MOUNT_W = 30.0  # relief groove for the Edge's rear quarter-turn mount
-EDGE_MOUNT_D = 6.0   # groove depth into the well's back wall
+EDGE_MOUNT_W = 32.0  # relief groove for the Edge's rear quarter-turn mount
+EDGE_MOUNT_D = 8.0   # groove depth into the back wall — the connector boss
+                     # protrudes past the 18.8 back, so the relief must clear it
 LEADIN = 4.0         # curved bellmouth lead-in at the Edge niche mouth (learned
                      # from the 1040 quarter-turn holder, whose rail tops sweep
                      # in over ~10mm): the opening flares by this per side at the
@@ -104,7 +103,9 @@ SCOOP_DIP = 8.0
 # two front claws over a flat back datum — registers + clips, not 4-wall
 # friction. Screen open in front; slide the Edge in from the top.
 EDGE_EDGE_R = 3.5    # Edge 1050 rounded side-edge radius — CALIPER THIS
-EDGE_CLAW_CL = 0.4   # cup clearance (snug; it wraps the contour, not friction)
+EDGE_CLAW_CL = 0.4   # WIDTH cup clearance (snug — wraps the side edges, "fits perfectly")
+EDGE_CLAW_CL_D = 0.7 # DEPTH clearance — looser than width, so the humped/domed
+                     # back (18.8 at the hump) clears the back wall and won't scrape
 CLAW_W = 7.0         # front claw span/side (covers the corner + ~3mm onto front)
 
 # design language (from the reference): one block, small radii, soft tops
@@ -129,7 +130,9 @@ H = DECK_B + SLOT_DEPTH              # rim height
 # unchanged — the whole block just gets a few mm deeper
 vw_x, vw_y = VARIA_W + 2 * CLEAR, VARIA_T + 2 * CLEAR + VARIA_BACK
 ut_x, ut_y = UT_W + 2 * UT_CLEAR_W, UT_T + 2 * CLEAR
-ew_x, ew_y = EDGE_W + 2 * EDGE_CLEAR_W, EDGE_T + 2 * EDGE_CLEAR
+# Edge envelope = the claw cavity (width snug, depth clears the humped back),
+# so the collar wraps it with clean WALL_SIDE walls
+ew_x, ew_y = EDGE_W + 2 * EDGE_CLAW_CL, EDGE_DEPTH + 2 * EDGE_CLAW_CL_D
 
 deck_zone = WALL_FRONT + max(vw_y, ut_y) + GAP_SLOT  # y depth of the deck
 base_d = deck_zone + SLOT_WALL_F + BAND_W + SLOT_WALL_R
@@ -253,8 +256,8 @@ def cut_edge_claw(body: cq.Workplane, cx: float, cy: float,
 
     `front_y` = the exterior face the front window opens out to (dock: y_front;
     coupon: its own front face)."""
-    cw_x = EDGE_W + 2 * EDGE_CLAW_CL          # snug cup, not loose friction
-    cw_y = EDGE_T + 2 * EDGE_CLAW_CL
+    cw_x = EDGE_W + 2 * EDGE_CLAW_CL          # snug WIDTH cup
+    cw_y = EDGE_DEPTH + 2 * EDGE_CLAW_CL_D    # DEPTH from the real 18.8 humped back
     Rc = EDGE_EDGE_R + EDGE_CLAW_CL           # cavity corner matches the edge
     depth = rim_z - floor_z
 
@@ -445,7 +448,7 @@ def device_mockups() -> dict[str, cq.Workplane]:
     For visualization renders only — never exported for printing."""
     edge = (
         cq.Workplane("XY")
-        .box(EDGE_W, EDGE_T, EDGE_H, centered=(True, True, False))
+        .box(EDGE_W, EDGE_DEPTH, EDGE_H, centered=(True, True, False))
         .edges("|Z")
         .fillet(8.0)
         .translate((edge_cx, edge_cy, EDGE_FLOOR + 0.5))
@@ -502,7 +505,7 @@ def edge_claw_test(test_h: float = 55.0) -> cq.Workplane:
     fit is identical to the dock. `test_h` is the channel height — bumped to 55
     (≈+1cm) after the 45mm print fit perfectly and wanted a bit more grip."""
     cw_x = EDGE_W + 2 * EDGE_CLAW_CL
-    cw_y = EDGE_T + 2 * EDGE_CLAW_CL
+    cw_y = EDGE_DEPTH + 2 * EDGE_CLAW_CL_D
     SIDE, BACK, FRONT = 3.0, 3.0, 3.0
     FLOOR = 4.0
     block = (
@@ -542,13 +545,8 @@ if __name__ == "__main__":
     cq.exporters.export(merged, str(out / "garmin_station_v4.stl"))
     cq.exporters.export(merged, str(out / "garmin_station_v4.step"))
 
-    # standalone Edge fit-test coupon — print this alone first to verify the
-    # slide-in/lead-in, then the full dock inherits the same fit
-    test = edge_fit_test()
-    cq.exporters.export(test, str(out / "garmin_station_v4_edgetest.stl"))
-    tb = test.val().BoundingBox()
-    print(f"edge fit-test coupon (friction well): {tb.xlen:.1f} x {tb.ylen:.1f} x {tb.zlen:.1f} mm")
-
+    # standalone Edge claw coupon — print this alone to verify the slide-in fit,
+    # then the full dock inherits the same fit (shared cut_edge_claw)
     claw = edge_claw_test()
     cq.exporters.export(claw, str(out / "garmin_station_v4_edgeclaw.stl"))
     cb = claw.val().BoundingBox()
