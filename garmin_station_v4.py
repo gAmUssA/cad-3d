@@ -234,6 +234,67 @@ def cut_edge_well(body: cq.Workplane, cx: float, cy: float,
     return body
 
 
+def cut_edge_claw(body: cq.Workplane, cx: float, cy: float,
+                  floor_z: float, rim_z: float, front_y: float) -> cq.Workplane:
+    """Edge 1050 CLAW cradle (chosen over the friction well after print tests).
+    Cups the device's rounded side edges in a snug rounded cavity over a flat
+    back datum, with the back hump relieved full-height and the FRONT OPEN
+    (claws at the corners) out to `front_y`. The open front is what lets the
+    rear quarter-turn hump sit in the relief without the closed-box
+    over-constraint that made the friction well reject the device. Shared by
+    the dock and the claw coupon so the fit is identical.
+
+    `front_y` = the exterior face the front window opens out to (dock: y_front;
+    coupon: its own front face)."""
+    cw_x = EDGE_W + 2 * EDGE_CLAW_CL          # snug cup, not loose friction
+    cw_y = EDGE_T + 2 * EDGE_CLAW_CL
+    Rc = EDGE_EDGE_R + EDGE_CLAW_CL           # cavity corner matches the edge
+    depth = rim_z - floor_z
+
+    cav = (
+        cq.Workplane("XY").center(cx, cy).rect(cw_x, cw_y).extrude(depth + 5)
+        .edges("|Z").fillet(Rc).translate((0, 0, floor_z))
+    )
+    body = body.cut(cav)
+
+    # open front window — remove the front centre out to front_y, leaving two
+    # corner claws that cup the rounded edges and overhang the front face
+    open_w = cw_x - 2 * CLAW_W
+    y_in = cy - cw_y / 2                       # cavity front
+    y0 = front_y - 2
+    win_len = (y_in + 1) - y0
+    window = (
+        cq.Workplane("XY").center(cx, (y0 + y_in + 1) / 2)
+        .rect(open_w, win_len).extrude(depth + 5)
+        .translate((0, 0, floor_z))
+    )
+    r_win = min(3.0, win_len / 2 - 0.6)        # avoid opposing-fillet collision
+    if r_win > 0.4:
+        try:
+            window = window.edges("|Z").fillet(r_win)
+        except Exception:
+            pass
+    body = body.cut(window)
+
+    # rear quarter-turn hump relief in the back datum (full height)
+    back_y = cy + cw_y / 2
+    relief = (
+        cq.Workplane("XY").center(cx, back_y + EDGE_MOUNT_D / 2 - 0.5)
+        .rect(EDGE_MOUNT_W, EDGE_MOUNT_D + 1.0).extrude(depth)
+        .edges("|Z").fillet(2.0).translate((0, 0, floor_z))
+    )
+    body = body.cut(relief)
+
+    # bellmouth lead-in at the rim
+    funnel = (
+        cq.Workplane("XY").center(cx, cy)
+        .rect(cw_x + 2 * LEADIN, cw_y + 2 * LEADIN).extrude(LEADIN + 2)
+        .edges("<Z").fillet(LEADIN * 0.99).translate((0, 0, rim_z - LEADIN))
+    )
+    body = body.cut(funnel)
+    return body
+
+
 def station() -> cq.Workplane:
     """Monolith body: profile extruded along X, slot + wells cut in."""
     y_back = base_d / 2
@@ -340,8 +401,8 @@ def station() -> cq.Workplane:
     )
     result = result.cut(ut_relief)
 
-    # --- Edge 1050 tower well (right): well + mount groove + lead-in --------------
-    result = cut_edge_well(result, edge_cx, edge_cy, EDGE_FLOOR, H)
+    # --- Edge 1050 claw cradle (right): cup + back datum/relief + open front -----
+    result = cut_edge_claw(result, edge_cx, edge_cy, EDGE_FLOOR, H, y_front)
 
     # soften rims/wall tops, relieve the bottom edge
     result = soften(result)
@@ -414,61 +475,26 @@ def edge_fit_test() -> cq.Workplane:
     return cut_edge_well(block, 0.0, 0.0, FLOOR, TEST_H)
 
 
-def edge_claw_test() -> cq.Workplane:
-    """Claw-style Edge holder coupon (learned from the Skådis Garmin holder):
-    a C-channel that cups the device's rounded side edges with two front claws
-    over a flat back datum, screen open in front. Registers + clips instead of
-    4-wall friction; slide the Edge in from the top. Print alongside
-    edge_fit_test() to compare the two grip styles."""
-    cl = EDGE_CLAW_CL
-    W = EDGE_W + 2 * cl          # cavity width (device width direction)
-    T = EDGE_T + 2 * cl          # cavity depth (device thickness direction)
-    Rc = EDGE_EDGE_R + cl        # cavity corner radius — cups the rounded edge
+def edge_claw_test(test_h: float = 55.0) -> cq.Workplane:
+    """Claw-style Edge holder coupon (the chosen design). A minimal block with
+    the Edge claw cut by the SAME cut_edge_claw() the dock uses, so the coupon
+    fit is identical to the dock. `test_h` is the channel height — bumped to 55
+    (≈+1cm) after the 45mm print fit perfectly and wanted a bit more grip."""
+    cw_x = EDGE_W + 2 * EDGE_CLAW_CL
+    cw_y = EDGE_T + 2 * EDGE_CLAW_CL
     SIDE, BACK, FRONT = 3.0, 3.0, 3.0
-    TEST_H, FLOOR = 45.0, 4.0
-
+    FLOOR = 4.0
     block = (
         cq.Workplane("XY")
-        .box(W + 2 * SIDE, T + BACK + FRONT, TEST_H, centered=(True, True, False))
+        .box(cw_x + 2 * SIDE, cw_y + BACK + FRONT, test_h, centered=(True, True, False))
         .edges("|Z").fillet(R_CORNER)
     )
     try:
         block = block.edges("<Z").chamfer(CHAMFER)
     except Exception:
         pass
-
-    # device cavity (rounded rect) — back wall is the flat datum, corners cup
-    cav = (
-        cq.Workplane("XY").rect(W, T).extrude(TEST_H)
-        .edges("|Z").fillet(Rc).translate((0, 0, FLOOR))
-    )
-    block = block.cut(cav)
-
-    # front screen window — remove the front wall centre, leaving two corner
-    # claws that overhang the front face (~3mm onto the flat) and retain it
-    open_w = W - 2 * CLAW_W
-    window = (
-        cq.Workplane("XY").center(0, T / 2 + FRONT / 2 + 0.5)
-        .rect(open_w, FRONT + 2.0).extrude(TEST_H)
-        .translate((0, 0, FLOOR))
-    )
-    block = block.cut(window)
-
-    # rear quarter-turn boss relief recessed into the back datum
-    boss = (
-        cq.Workplane("XY").center(0, -(T / 2) - EDGE_MOUNT_D / 2 + 0.5)
-        .rect(EDGE_MOUNT_W, EDGE_MOUNT_D + 1.0).extrude(TEST_H)
-        .edges("|Z").fillet(2.0).translate((0, 0, FLOOR))
-    )
-    block = block.cut(boss)
-
-    # bellmouth lead-in at the channel mouth (slide-in from the top)
-    funnel = (
-        cq.Workplane("XY").rect(W + 2 * LEADIN, T + 2 * LEADIN).extrude(LEADIN + 2)
-        .edges("<Z").fillet(LEADIN * 0.99).translate((0, 0, TEST_H - LEADIN))
-    )
-    block = block.cut(funnel)
-    return block
+    # cavity centred at origin; coupon front face at -(cw_y/2 + FRONT)
+    return cut_edge_claw(block, 0.0, 0.0, FLOOR, test_h, -(cw_y / 2 + FRONT))
 
 
 if "show_object" in globals():

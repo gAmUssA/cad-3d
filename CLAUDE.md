@@ -115,18 +115,24 @@ band holster (strap stuffs in, pod stands behind the notch ~flush,
   flat 45°; cut from the rim down). Learned from `out/Garmin_Edge_1040_Solar
   .stl` (a quarter-turn side-rail cradle whose rail tops sweep in ~10mm).
   Affects entry only, not the seated fit.
-- **Two Edge-holder styles to A/B print** (both via the coupon exports):
-  - `edge_fit_test()` → `..._edgetest.stl`: the friction WELL (4 flat walls,
-    snug clearance + bellmouth). Dialed in over prints 1–5.
-  - `edge_claw_test()` → `..._edgeclaw.stl`: CLAW/cradle style learned from
-    the Skådis Garmin holder (`out/Garmin_Edge_1040_Solar.stl`). C-channel
-    that CUPS the device's rounded side edges (`EDGE_EDGE_R`, cavity corner =
-    R+cl) with two front claws (`CLAW_W` span, overhang the front face ~3mm)
-    over a flat back datum + rear-boss relief; screen open front; slide in
-    from the top. Registers+clips, not flat-wall friction → forgiving, no
-    scratch, less material (67×23 vs 73×33). `EDGE_EDGE_R=3.5` is a GUESS —
-    caliper the real side-edge radius. Not yet wired into the full dock; if
-    the user prefers it, replace `cut_edge_well` in `station()` with a claw cut.
+- **Edge holder = CLAW (chosen after A/B print test).** The friction WELL
+  (`cut_edge_well`, `edge_fit_test`) is kept as dead code for reference but no
+  longer used; the user's print verdict: claw "fits perfectly", friction well
+  "too tight in width and depth — the rear hump doesn't fit".
+  - `cut_edge_claw(body, cx, cy, floor_z, rim_z, front_y)` — the dock's Edge
+    holder. Rounded cavity (`EDGE_EDGE_R + EDGE_CLAW_CL` corner) CUPS the
+    device's rounded side edges over a flat back datum; rear hump relief
+    (`EDGE_MOUNT_*`) full height; **open front** (claws at the corners, window
+    out to `front_y`) — the open front is WHY it fits where the closed well
+    didn't (the hump sits in the relief without box over-constraint); bellmouth
+    lead-in. `station()` calls it with `front_y=y_front`.
+  - `edge_claw_test(test_h=55)` → `..._edgeclaw.stl`: coupon using the SAME
+    helper, so fit is identical. 55mm (≈+1cm over the 45mm that fit perfectly).
+  - **Dock vs coupon claw shape differs (fit identical):** in the dock the
+    front runs ~14mm to the deck face, so the claws are deep corner POSTS, not
+    thin lips; and the Edge towers ~70mm above a ~48mm grip (cantilever — watch
+    for forward lean; raise cradle walls above the deck if it tips).
+  - `EDGE_EDGE_R=3.5` still a GUESS — caliper the real side-edge radius.
   The full dock AND the `edge_fit_test()` coupon both call it, so the coupon's
   fit is byte-identical — print the small coupon (`garmin_station_v4_edgetest
   .stl`, ~76×36×45) to dial in the slide-in, then the dock inherits it.
