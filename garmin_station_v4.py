@@ -45,7 +45,6 @@ UT_FLANGE = 44.7                               # depth incl. mount flange (tab)
 HRM_W, HRM_H, HRM_T = 68.0, 31.6, 10.0         # HRM 600 module, in band slot
 
 CLEAR = 0.8          # general per-side pocket clearance
-VARIA_BACK = 3.0     # extra depth behind the RCT715 (back was tight)
 UT_CLEAR_W = 0.4     # UT800 width (x) — was 0.8/side, ran loose; snug it up
 
 # --- station ------------------------------------------------------------------
@@ -108,6 +107,16 @@ EDGE_CLAW_CL_D = 0.7 # DEPTH clearance — looser than width, so the humped/dome
                      # back (18.8 at the hump) clears the back wall and won't scrape
 CLAW_W = 7.0         # front claw span/side (covers the corner + ~3mm onto front)
 
+# Varia RCT715 claw cradle (same approach as the 1050 — the 715 also has a rear
+# quarter-turn mount, so open-front + back relief beats a closed well).
+VARIA_EDGE_R = 6.0   # 715 rounded side-edge radius — CALIPER THIS (guess)
+VARIA_CLAW_CL = 0.4  # width cup clearance (snug)
+VARIA_CLAW_CL_D = 0.8  # depth clearance (clears the rear mount/back)
+VARIA_CLAW_W = 9.0   # front claw span/side
+VARIA_MOUNT_W = 30.0 # rear quarter-turn mount relief width
+VARIA_MOUNT_D = 8.0  # rear mount relief depth into the back wall
+VARIA_RISE = 11.0    # cradle rise above the deck (grip), matched to the Edge
+
 # design language (from the reference): one block, small radii, soft tops
 R_CORNER = 5.0       # outer vertical corners
 R_FRONT = 3.0        # front top edge
@@ -126,10 +135,9 @@ DECK_B = DECK_F + DECK_DROP          # deck at the slot wall = slot floor
 H = DECK_B + SLOT_DEPTH              # rim height
 band_floor = DECK_B - BAND_DEEPEN    # HRM band slot floor (deepened below deck)
 
-# front-aligned wells: extra VARIA_BACK depth lands behind the device (the
-# well front stays at WALL_FRONT), so the GAP_SLOT wall to the holster is
-# unchanged — the whole block just gets a few mm deeper
-vw_x, vw_y = VARIA_W + 2 * CLEAR, VARIA_T + 2 * CLEAR + VARIA_BACK
+# Varia envelope = its claw cavity (width snug, depth clears the rear mount),
+# so the collar wraps it with clean WALL_SIDE walls (like the Edge)
+vw_x, vw_y = VARIA_W + 2 * VARIA_CLAW_CL, VARIA_T + 2 * VARIA_CLAW_CL_D
 ut_x, ut_y = UT_W + 2 * UT_CLEAR_W, UT_T + 2 * CLEAR
 # Edge envelope = the claw cavity (width snug, depth clears the humped back),
 # so the collar wraps it with clean WALL_SIDE walls
@@ -245,6 +253,62 @@ def cut_edge_well(body: cq.Workplane, cx: float, cy: float,
     return body
 
 
+def cut_claw(body: cq.Workplane, cx: float, cy: float, floor_z: float,
+             rim_z: float, front_y: float, cw_x: float, cw_y: float, Rc: float,
+             mount_w: float, mount_d: float, claw_w: float,
+             leadin: float = LEADIN) -> cq.Workplane:
+    """General CLAW cradle (proven on the 1050, reused for the Varia 715): a
+    rounded cavity that CUPS the device's rounded side edges over a flat back
+    datum, with the rear quarter-turn mount relieved full-height and the FRONT
+    OPEN (claws at the corners, window out to `front_y`). The open front is
+    what lets the rear mount boss sit in the relief without the closed-box
+    over-constraint that scrapes. Lead-in is a small flat chamfer (flat,
+    ironable tops). `cw_x/cw_y` = cavity size, `Rc` = cavity corner radius."""
+    depth = rim_z - floor_z
+
+    cav = (
+        cq.Workplane("XY").center(cx, cy).rect(cw_x, cw_y).extrude(depth + 5)
+        .edges("|Z").fillet(Rc).translate((0, 0, floor_z))
+    )
+    body = body.cut(cav)
+
+    # open front window — claws at the corners cup the rounded edges
+    open_w = cw_x - 2 * claw_w
+    y_in = cy - cw_y / 2
+    y0 = front_y - 2
+    win_len = (y_in + 1) - y0
+    window = (
+        cq.Workplane("XY").center(cx, (y0 + y_in + 1) / 2)
+        .rect(open_w, win_len).extrude(depth + 5)
+        .translate((0, 0, floor_z))
+    )
+    r_win = min(3.0, win_len / 2 - 0.6)
+    if r_win > 0.4:
+        try:
+            window = window.edges("|Z").fillet(r_win)
+        except Exception:
+            pass
+    body = body.cut(window)
+
+    # rear quarter-turn mount relief in the back datum (full height)
+    back_y = cy + cw_y / 2
+    relief = (
+        cq.Workplane("XY").center(cx, back_y + mount_d / 2 - 0.5)
+        .rect(mount_w, mount_d + 1.0).extrude(depth)
+        .edges("|Z").fillet(2.0).translate((0, 0, floor_z))
+    )
+    body = body.cut(relief)
+
+    # small flat lead-in chamfer — flat, ironable wall tops + tidy entry bevel
+    funnel = (
+        cq.Workplane("XY").center(cx, cy)
+        .rect(cw_x + 2 * leadin, cw_y + 2 * leadin).extrude(leadin + 2)
+        .edges("<Z").chamfer(leadin * 0.99).translate((0, 0, rim_z - leadin))
+    )
+    body = body.cut(funnel)
+    return body
+
+
 def cut_edge_claw(body: cq.Workplane, cx: float, cy: float,
                   floor_z: float, rim_z: float, front_y: float) -> cq.Workplane:
     """Edge 1050 CLAW cradle (chosen over the friction well after print tests).
@@ -257,55 +321,13 @@ def cut_edge_claw(body: cq.Workplane, cx: float, cy: float,
 
     `front_y` = the exterior face the front window opens out to (dock: y_front;
     coupon: its own front face)."""
-    cw_x = EDGE_W + 2 * EDGE_CLAW_CL          # snug WIDTH cup
-    cw_y = EDGE_DEPTH + 2 * EDGE_CLAW_CL_D    # DEPTH from the real 18.8 humped back
-    Rc = EDGE_EDGE_R + EDGE_CLAW_CL           # cavity corner matches the edge
-    depth = rim_z - floor_z
-
-    cav = (
-        cq.Workplane("XY").center(cx, cy).rect(cw_x, cw_y).extrude(depth + 5)
-        .edges("|Z").fillet(Rc).translate((0, 0, floor_z))
+    return cut_claw(
+        body, cx, cy, floor_z, rim_z, front_y,
+        cw_x=EDGE_W + 2 * EDGE_CLAW_CL,          # snug WIDTH cup
+        cw_y=EDGE_DEPTH + 2 * EDGE_CLAW_CL_D,    # DEPTH from the real 18.8 humped back
+        Rc=EDGE_EDGE_R + EDGE_CLAW_CL,
+        mount_w=EDGE_MOUNT_W, mount_d=EDGE_MOUNT_D, claw_w=CLAW_W,
     )
-    body = body.cut(cav)
-
-    # open front window — remove the front centre out to front_y, leaving two
-    # corner claws that cup the rounded edges and overhang the front face
-    open_w = cw_x - 2 * CLAW_W
-    y_in = cy - cw_y / 2                       # cavity front
-    y0 = front_y - 2
-    win_len = (y_in + 1) - y0
-    window = (
-        cq.Workplane("XY").center(cx, (y0 + y_in + 1) / 2)
-        .rect(open_w, win_len).extrude(depth + 5)
-        .translate((0, 0, floor_z))
-    )
-    r_win = min(3.0, win_len / 2 - 0.6)        # avoid opposing-fillet collision
-    if r_win > 0.4:
-        try:
-            window = window.edges("|Z").fillet(r_win)
-        except Exception:
-            pass
-    body = body.cut(window)
-
-    # rear quarter-turn hump relief in the back datum (full height)
-    back_y = cy + cw_y / 2
-    relief = (
-        cq.Workplane("XY").center(cx, back_y + EDGE_MOUNT_D / 2 - 0.5)
-        .rect(EDGE_MOUNT_W, EDGE_MOUNT_D + 1.0).extrude(depth)
-        .edges("|Z").fillet(2.0).translate((0, 0, floor_z))
-    )
-    body = body.cut(relief)
-
-    # small flat lead-in chamfer at the rim — leaves the wall tops FLAT (clean
-    # + ironable) with just a tidy bevel inside, instead of the big concave
-    # bellmouth that scalloped the tops into notch-like dips
-    funnel = (
-        cq.Workplane("XY").center(cx, cy)
-        .rect(cw_x + 2 * LEADIN, cw_y + 2 * LEADIN).extrude(LEADIN + 2)
-        .edges("<Z").chamfer(LEADIN * 0.99).translate((0, 0, rim_z - LEADIN))
-    )
-    body = body.cut(funnel)
-    return body
 
 
 def station() -> cq.Workplane:
@@ -367,26 +389,24 @@ def station() -> cq.Workplane:
     )
     result = result.cut(notch)
 
-    # --- Varia RCT715 well (front left) -----------------------------------------
-    varia_well = (
-        cq.Workplane("XY")
-        .center(varia_cx, varia_cy)
-        .rect(vw_x, vw_y)
-        .extrude(H)
-        .edges("|Z")
-        .fillet(R_WELL)
-        .translate((0, 0, WELL_FLOOR))
+    # --- Varia RCT715 claw cradle (front left) ----------------------------------
+    # same open-front claw as the Edge: cups the rounded side edges, flat back
+    # datum with rear-mount relief, raised collar for grip. The open front (the
+    # window) is the extraction grip — no separate scoop needed.
+    varia_rim = DECK_B + VARIA_RISE
+    varia_collar = (
+        cq.Workplane("XY").center(varia_cx, varia_cy)
+        .rect(vw_x + 2 * WALL_SIDE, vw_y + 2 * WALL_SIDE).extrude(varia_rim - DECK_F)
+        .edges("|Z").fillet(R_CORNER)
+        .translate((0, 0, DECK_F))
     )
-    result = result.cut(varia_well)
-
-    # thumb scoop dipping the well's front rim (echoes the big notch)
-    scoop = (
-        cq.Workplane("XZ", origin=(varia_cx, y_front - 2, 0))
-        .center(0, DECK_F + SCOOP_R - SCOOP_DIP)
-        .circle(SCOOP_R)
-        .extrude(-(WALL_FRONT + SCOOP_R))
+    result = result.union(varia_collar)
+    result = cut_claw(
+        result, varia_cx, varia_cy, WELL_FLOOR, varia_rim, y_front,
+        cw_x=VARIA_W + 2 * VARIA_CLAW_CL, cw_y=VARIA_T + 2 * VARIA_CLAW_CL_D,
+        Rc=VARIA_EDGE_R + VARIA_CLAW_CL,
+        mount_w=VARIA_MOUNT_W, mount_d=VARIA_MOUNT_D, claw_w=VARIA_CLAW_W,
     )
-    result = result.cut(scoop)
 
     # --- Varia UT800 well (front, far left) -------------------------------------
     ut_well = (

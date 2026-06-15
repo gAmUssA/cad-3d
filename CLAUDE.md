@@ -169,6 +169,14 @@ asymmetric since the devices differ in width):**
   `R_EDGE_WELL=7` too. If it still binds, widen/deepen the groove first.
 - Varia↔holster wall was 1.6 mm (thin) → `GAP_SLOT=5.0`. Varia clearance left
   at 0.8 (user said snug is fine).
+- **Varia RCT715 is now a CLAW cradle too** (like the 1050 — it has its own
+  rear quarter-turn mount, so the closed well risked the same scrape). The Edge
+  claw was generalized into `cut_claw(body, cx, cy, floor_z, rim_z, front_y, *,
+  cw_x, cw_y, Rc, mount_w, mount_d, claw_w, leadin)`; `cut_edge_claw` is now a
+  thin wrapper, and the Varia calls `cut_claw` with `VARIA_*` params + its own
+  raised collar (`VARIA_RISE`). `VARIA_EDGE_R=6` and `VARIA_MOUNT_W/D` are
+  GUESSES — verify on the draft print. UT800 stays a closed well + FRONT flange
+  relief (user kept it front for consistency with the open-front claws).
 - HRM band slot floor deepened via `BAND_DEEPEN=8` (floor `DECK_B-BAND_DEEPEN`,
   depth 30→38) so the pod+strap tuck ~6mm below the rim. Notch left at its
   height (lowering it would shrink the Edge cradle cap) — so it reveals a touch
