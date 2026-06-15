@@ -83,12 +83,10 @@ UT_FLOOR = 5.0       # UT800 well floor
 EDGE_MOUNT_W = 32.0  # relief groove for the Edge's rear quarter-turn mount
 EDGE_MOUNT_D = 8.0   # groove depth into the back wall — the connector boss
                      # protrudes past the 18.8 back, so the relief must clear it
-LEADIN = 4.0         # curved bellmouth lead-in at the Edge niche mouth (learned
-                     # from the 1040 quarter-turn holder, whose rail tops sweep
-                     # in over ~10mm): the opening flares by this per side at the
-                     # rim on a concave radius, blending to nominal LEADIN below.
-                     # Affects only entry, not the seated fit. Stronger self-guide
-                     # + softer touch than a flat chamfer.
+LEADIN = 2.0         # lead-in at the Edge niche mouth — a small flat CHAMFER
+                     # (was a 4mm concave bellmouth, which scalloped the wall
+                     # tops into notch-like dips). Now leaves flat, ironable wall
+                     # tops with a tidy bevel inside for easy entry.
 # UT800's quarter-turn mount flange (29.7 body -> 44.7) is ASSUMED to face
 # FORWARD: a notch through the well's front wall homes the tab + serves as
 # the extraction grip. The front is open, so this can't break the holster or
@@ -295,11 +293,13 @@ def cut_edge_claw(body: cq.Workplane, cx: float, cy: float,
     )
     body = body.cut(relief)
 
-    # bellmouth lead-in at the rim
+    # small flat lead-in chamfer at the rim — leaves the wall tops FLAT (clean
+    # + ironable) with just a tidy bevel inside, instead of the big concave
+    # bellmouth that scalloped the tops into notch-like dips
     funnel = (
         cq.Workplane("XY").center(cx, cy)
         .rect(cw_x + 2 * LEADIN, cw_y + 2 * LEADIN).extrude(LEADIN + 2)
-        .edges("<Z").fillet(LEADIN * 0.99).translate((0, 0, rim_z - LEADIN))
+        .edges("<Z").chamfer(LEADIN * 0.99).translate((0, 0, rim_z - LEADIN))
     )
     body = body.cut(funnel)
     return body

@@ -148,6 +148,11 @@ band holster (strap stuffs in, pod stands behind the notch ~flush,
     cavity depth, with decoupled clearance: `EDGE_CLAW_CL=0.4` WIDTH (snug,
     "fits perfectly") vs `EDGE_CLAW_CL_D=0.7` DEPTH (clears the hump). Boss
     relief deepened to `EDGE_MOUNT_D=8`. Friction-well coupon export removed.
+  - **Top notches (print-6):** two causes — (1) the concave bellmouth lead-in
+    scalloped the wall tops into dips → replaced with a small flat CHAMFER
+    (`LEADIN=2.0`), giving flat ironable tops; (2) the back-wall slot is the
+    quarter-turn MOUNT clearance — unavoidable (the boss dips below the deck,
+    so any back wall there must open), and the seated device covers it.
   The full dock AND the `edge_fit_test()` coupon both call it, so the coupon's
   fit is byte-identical — print the small coupon (`garmin_station_v4_edgetest
   .stl`, ~76×36×45) to dial in the slide-in, then the dock inherits it.
